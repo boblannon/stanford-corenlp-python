@@ -27,13 +27,12 @@ from unidecode import unidecode
 VERBOSE = True
 STATE_START, STATE_TEXT, STATE_WORDS, STATE_TREE, STATE_DEPENDENCY, STATE_COREFERENCE = 0, 1, 2, 3, 4, 5
 WORD_PATTERN = re.compile('\[([^\]]+)\]')
-CR_PATTERN = re.compile(r"\((\d*),(\d)*,\[(\d*),(\d*)\)\) -> \((\d*),(\d)*,\[(\d*),(\d*)\)\), that is: \"(.*)\" -> \"(.*)\"")
+CR_PATTERN = re.compile(r"\((\d*),(\d*),\[(\d*),(\d*)\)\) -> \((\d*),(\d*),\[(\d*),(\d*)\)\), that is: \"(.*)\" -> \"(.*)\"")
 
 
 def remove_id(word):
     """Removes the numeric suffix from the parsed recognized words: e.g. 'word-2' > 'word' """
-    return word.count("-") == 0 and word or word[0:word.rindex("-")]
-
+    return word.count("-") == 0 and word or tuple(word.split("-"))
 
 def parse_bracketed(s):
     '''Parse word features [abc=... def = ...]
@@ -51,10 +50,10 @@ def parse_bracketed(s):
         if val in temp:
             val = temp[val]
         if attr == 'Text':
-            word = val
+            attrs['word'] = val
         else:
             attrs[attr] = val
-    return (word, attrs)
+    return attrs
 
 
 def parse_parser_results(text):
@@ -98,19 +97,39 @@ def parse_parser_results(text):
                 split_entry = re.split("\(|, ", line[:-1])
                 if len(split_entry) == 3:
                     rel, left, right = map(lambda x: remove_id(x), split_entry)
-                    sentence['dependencies'].append(tuple([rel,left,right]))
+                    sentence['dependencies'].append({'dependency':rel,
+                                                     'governor': { 
+                                                         'word': left[0],
+                                                         'index': left[1]
+                                                         },
+                                                     'dependent': {
+                                                         'word': right[0],
+                                                         'index': right[1]
+                                                         }})
         
         elif state == STATE_COREFERENCE:
             if "Coreference set" in line:
                 if 'coref' not in results:
                     results['coref'] = []
-                coref_set = []
-                results['coref'].append(coref_set)
+                #coref_set = []
+                #results['coref'].append(coref_set)
             else:
                 for src_i, src_pos, src_l, src_r, sink_i, sink_pos, sink_l, sink_r, src_word, sink_word in CR_PATTERN.findall(line):
                     src_i, src_pos, src_l, src_r = int(src_i)-1, int(src_pos)-1, int(src_l)-1, int(src_r)-1
                     sink_i, sink_pos, sink_l, sink_r = int(sink_i)-1, int(sink_pos)-1, int(sink_l)-1, int(sink_r)-1
-                    coref_set.append(((src_word, src_i, src_pos, src_l, src_r), (sink_word, sink_i, sink_pos, sink_l, sink_r)))
+                    results['coref'].append({ 
+                        'source' : {
+                            'word'         : src_word, 
+                            'sentence'     : src_i, 
+                            'offset'       : src_pos, 
+                            'left_bound'   : src_l, 
+                            'right_bound'  : src_r },
+                        'target': { 
+                            'word'         : sink_word,
+                            'sentence'     : sink_i, 
+                            'offset'       : sink_pos, 
+                            'left_bound'   : sink_l, 
+                            'right_bound'  : sink_r}})
     
     return results
 
@@ -125,14 +144,15 @@ class StanfordCoreNLP(object):
         Checks the location of the jar files.
         Spawns the server as a process.
         """
-        jars = ["stanford-corenlp-2012-07-09.jar",
-                "stanford-corenlp-2012-07-06-models.jar",
+        jars = ["stanford-corenlp-1.3.4.jar",
+                "stanford-corenlp-1.3.4-models.jar",
                 "joda-time.jar",
-                "xom.jar"]
+                "xom.jar",
+                "jollyday.jar"]
        
         # if CoreNLP libraries are in a different directory,
         # change the corenlp_path variable to point to them
-        corenlp_path = "stanford-corenlp-2012-07-09/"
+        corenlp_path = "/opt/stanford-corenlp-full-2012-11-12/"
         
         java_path = "java"
         classname = "edu.stanford.nlp.pipeline.StanfordCoreNLP"
