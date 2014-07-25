@@ -25,5 +25,5 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
     ],
-    install_requires=[]
+    install_requires=["pexpect", "Unidecode", ]
 )
